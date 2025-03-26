@@ -17,70 +17,37 @@ Sometimes when a bad actor has access to a system, they will attempt to download
 
 ### Part 1: Create Alert Rule PowerShell Suspicious Web Request
 
-Here I am setting up the rules to detect if there were a excessive amount of login failed attempt.
+Here I am setting up the rules to detect if there were any Suspicious PowerShell running. 
 
 
-<img width="1212" alt="image" src="Screenshot 2025-03-22 161239.png">
+<img width="1212" alt="image" src="Screenshot 2025-03-26 004914.png">
 
-<img width="1212" alt="image" src="Screenshot 2025-03-22 161602.png">
+<img width="1212" alt="image" src="Screenshot 2025-03-26 005151.png">
 
 ---
 
-### 2. Investigate and find out if anyone has attempted to login into the machine
+### 2. Investigate the alert
 
-Next the rules that I put in place are alerted.
+The Suspicious Web Request was triggered on 1 device by 1 user,but download 4 different scripts.After investigating with Defender for Endpoint, it was determined that the downloaded scripts did run.see the following query.
 
 **Query used to locate event:**
 
 ```kql
-DeviceLogonEvents
-| where ActionType == "LogonFailed" and TimeGenerated > ago(5h)
-| summarize EventCount = count() by RemoteIP, DeviceName, ActionType
-| where EventCount >= 10
-| order by EventCount
+let ScriptNames = dynamic(["eicar.ps1", "exfiltratedata.ps1", "portscan.ps1", "pwncrypt.ps1"]);
+DeviceProcessEvents
+| where DeviceName == "windows-target-1"
+| where FileName == "powershell.exe"
+| where ProcessCommandLine contains "-File" and ProcessCommandLine has_any (ScriptNames)
+| order by TimeGenerated
+| project TimeGenerated, AccountName, DeviceName, FileName, ProcessCommandLine
 ```
-<img width="1212" alt="image" src="Screenshot 2025-03-22 162815.png">
+<img width="1212" alt="image" src="Screenshot 2025-03-26 013922.png">
 
-<img width="1212" alt="image" src="Screenshot 2025-03-22 160732.png">
-
-<img width="1212" alt="image" src="Screenshot 2025-03-22 163912.png">
-
----
-
-### 3. Investigate the Machines 
-
-Three different virtual machines were potentially impacted by brute force attempts from 4 different public IP:
-
-## Details of Failed Logon Attempts
-
-| **IP Address**       | **Hostname**                                              | **Status**      | **Failed Attempts** |
-|----------------------|----------------------------------------------------------|----------------|--------------------|
-| 170.64.155.135       | linux-programmatic-fix-tau.p2zfvso05mlezjev3ck4vqd3kd.cx.internal.cloudapp.net | LogonFailed    | 63                 |
-| 112.135.212.148      | sa-mde-test-2                                             | LogonFailed    | 58                 |
-| 158.101.242.63       | sa-mde-test-2                                             | LogonFailed    | 40                 |
-| 185.151.86.130       | ir-sentinel-moa                                           | LogonFailed    | 40                 |
-
-
----
-
-### 4. Containment:Isolated Devices
-I isolated the Devices using MDE then I Ran anti-malware scan on all four devices within MDE.I check to see if any of the IP addresses attempting to brute force successfully logged in with the following query,but none were successful:
-
-**Query used to locate events:**
-
-```kql
-DeviceLogonEvents
-| where ActionType == "LogonSuccess"
-| where RemoteIP in ("170.64.155.135", "112.135.212.148", "185.151.86.130", "158.101.242.63")
-```
-<img width="1212" alt="image" src="Screenshot 2025-03-22 164528.png">
+<img width="1212" alt="image" src="Screenshot 2025-03-26 013220.png">
 
 ---
 
 ## Summary
-
-<img width="1212" alt="image" src="Screenshot 2025-03-22 165905.png">
-
 
 MITRE ATT&CK - T1071.001: Web Protocols
 
@@ -96,8 +63,6 @@ MITRE ATT&CK - T1041: Exfiltration Over C2 Channel
 
 ## Response Action
 
-NSG was locked down to prevent RDP attempts from the public internet. Policy was proposed to require this for all VMs going forward.Additionally I set a rule only allowing my home IP address.(Alternatively we can use bastion host) 
-
-<img width="1212" alt="image" src="Screenshot 2025-03-22 165025.png">
+Machine was isolated in MDE and an anti-malware scan was run.After the machine came back clean, we removed it from isolation, had the affected user go through extra rounds of cybersecurity awareness training and upgraded our training package from  knowBe4 and increased frequency.Started the implementation of a policy that restricts the use of powershell for non-essential users.
 
 ---
